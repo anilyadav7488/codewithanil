@@ -95,10 +95,11 @@ def evaluate_prompt(prompt_text: str) -> PromptAnalysisResponse:
     else:
         weaknesses.append("Lacks explicit role assignment (e.g. 'You are a senior developer...').")
         suggestions.append("Add a persona or perspective to frame the response context.")
-
     if format_matches:
-        strengths.append(f"Specifies desired output structure ({', '.join([f.replace(r'\\b', '') for f in format_matches[:2]])}).")
+        clean_formats = [f.replace("\\b", "") for f in format_matches[:2]]
+        strengths.append(f"Specifies desired output structure ({', '.join(clean_formats)}).")
     else:
+
         weaknesses.append("Does not define desired output format (Markdown, JSON, bullet points).")
         suggestions.append("Explicitly state the output format, such as 'Format your response as a Markdown table'.")
 
@@ -106,11 +107,12 @@ def evaluate_prompt(prompt_text: str) -> PromptAnalysisResponse:
         strengths.append("Sets actionable negative constraints or boundaries.")
     else:
         weaknesses.append("No boundary constraints provided (e.g. length limits, excluded topics).")
-        suggestions.append("Include constraints such as 'Keep the explanation under 200 words' or 'Do not use jargon'.")
+        suggestions.append("Include constraints such as Keep the explanation under 200 words or Do not use jargon.")
 
     if vague_found:
-        weaknesses.append(f"Contains subjective or ambiguous qualifiers: {', '.join([v.replace(r'\\b', '') for v in vague_found[:3]])}.")
-        suggestions.append("Replace vague terms like 'fast' or 'good' with measurable quantitative criteria.")
+        clean_vague = [v.replace(chr(92)+"b", "") for v in vague_found[:3]]
+        weaknesses.append("Contains subjective or ambiguous qualifiers: " + ", ".join(clean_vague) + ".")
+        suggestions.append("Replace vague terms like fast or good with measurable quantitative criteria.")
 
     if clarity_score >= 80:
         strengths.append("High instructional clarity and direct call to action.")
