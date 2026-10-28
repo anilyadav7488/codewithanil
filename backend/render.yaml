@@ -1,37 +1,41 @@
+# CodeWithAnil Backend - Render Free Blueprint (Zero-PyTorch, 512 MB RAM)
 services:
-  # CodeWithAnil Backend FastAPI Web Service on Render
   - type: web
     name: codewithanil-backend
-    env: python
+    runtime: python
     region: oregon
-    plan: starter # Starter plan provides sufficient RAM for transformer CPU inference
-    branch: main
+    plan: free
+    branch: experiment/onnx-int8
     rootDir: backend
-    buildCommand: "pip install --upgrade pip && pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt && alembic upgrade head"
+    buildCommand: "pip install --upgrade pip && pip install -r requirements-render-free.txt && python ml/download_model.py"
     startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1"
-    healthCheckPath: /api/health
+    healthCheckPath: /api/ready
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: INFERENCE_BACKEND
+        value: onnx_int8
       - key: ENVIRONMENT
         value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
       - key: API_V1_STR
         value: /api
-      - key: HF_MODEL_NAME
-        value: Hello-SimpleAI/chatgpt-detector-roberta
-      - key: INFERENCE_DEVICE
-        value: cpu
+      - key: ONNX_MODEL_PATH
+        value: ml/models/roberta_chatgpt_detector_int8.onnx
+      - key: TOKENIZER_DIR
+        value: ml/models/tokenizer
+      - key: MAX_SEQUENCE_LENGTH
+        value: "512"
+      - key: INCONCLUSIVE_LOWER_THRESHOLD
+        value: "0.40"
+      - key: INCONCLUSIVE_UPPER_THRESHOLD
+        value: "0.60"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "60"
+      - key: CORS_ORIGINS
+        value: '["https://codewithanil.vercel.app","http://localhost:3000","http://127.0.0.1:3000"]'
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: codewithanil-postgres
-          property: connectionString
-
-databases:
-  # Managed PostgreSQL database on Render
-  - name: codewithanil-postgres
-    plan: free
-    region: oregon
-    databaseName: codewithanil
-    user: codewithanil_admin
+        value: sqlite:///./codewithanil.db

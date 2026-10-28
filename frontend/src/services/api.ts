@@ -10,14 +10,33 @@ import {
   UserStats,
 } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+/**
+ * Normalizes the API base URL to ensure proper endpoint routing.
+ * Tolerates URLs with or without trailing slashes, and with or without '/api'.
+ */
+function getApiBaseUrl(): string {
+  let url = (import.meta.env.VITE_API_URL || '').trim();
+  if (!url) {
+    return '/api';
+  }
+  // Strip trailing slashes
+  url = url.replace(/\/+$/, '');
+  
+  // Ensure /api is appended if not already present
+  if (!url.endsWith('/api') && !url.includes('/api/')) {
+    url = `${url}/api`;
+  }
+  return url;
+}
 
-const apiClient = axios.create({
+export const API_BASE_URL = getApiBaseUrl();
+
+export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 45000,
+  timeout: 60000, // 60 seconds gives Render Free sufficient headroom to wake from sleep
 });
 
 apiClient.interceptors.request.use(
@@ -30,6 +49,31 @@ apiClient.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
+/**
+ * Extracts a diagnostic, user-friendly error message from failed API responses.
+ */
+export function extractErrorMessage(err: any): string {
+  if (err?.response?.data?.detail) {
+    return err.response.data.detail;
+  }
+  if (err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')) {
+    return 'Server cold start timeout. Render Free spins down during inactivity and requires ~30-45 seconds to wake up. Please wait a moment and try again.';
+  }
+  if (err?.response?.status === 503) {
+    return 'Inference service is currently initializing. Please try again in a few seconds.';
+  }
+  if (err?.response?.status === 500) {
+    return err?.response?.data?.detail || 'Internal server error while executing text classification.';
+  }
+  if (err?.response?.status === 404) {
+    return `API endpoint not found (404). Ensure VITE_API_URL is configured to your Render backend root or /api. Target: ${API_BASE_URL}`;
+  }
+  if (!err?.response && (err?.message === 'Network Error' || !err?.status)) {
+    return `Network Error: Unable to reach backend at ${API_BASE_URL}. The Render Free server may be asleep (waking up takes ~30-40s) or CORS is blocking the request.`;
+  }
+  return err?.message || 'Failed to perform inference. Ensure the backend server and model service are running.';
+}
 
 export const api = {
   // Detection APIs
@@ -73,7 +117,7 @@ export const api = {
     return response.data;
   },
 
-  // Model & System APIs
+  // Model & System Health & Readiness APIs
   getModelInfo: async (): Promise<ModelInfoResponse> => {
     const response = await apiClient.get<ModelInfoResponse>('/model/info');
     return response.data;
@@ -82,6 +126,27 @@ export const api = {
   getHealth: async (): Promise<{ status: string; timestamp: string; model_loaded: boolean }> => {
     const response = await apiClient.get('/health');
     return response.data;
+  },
+
+  getReady: async (): Promise<{ status: string; ready: boolean; model_name: string }> => {
+    const response = await apiClient.get('/ready');
+    return response.data;
+  },
+
+  checkReady: async (): Promise<{ ready: boolean; status: string; detail?: string }> => {
+    try {
+      const response = await apiClient.get('/ready', { timeout: 10000 });
+      return { ready: Boolean(response.data?.ready), status: response.data?.status || 'ready' };
+    } catch (err: any) {
+      if (err?.response?.status === 503) {
+        return {
+          ready: false,
+          status: 'initializing',
+          detail: err.response.data?.detail || 'Inference service is currently initializing. Please try again in a few seconds.',
+        };
+      }
+      return { ready: false, status: 'unavailable', detail: extractErrorMessage(err) };
+    }
   },
 
   // History & Reports

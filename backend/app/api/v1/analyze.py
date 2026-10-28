@@ -1,5 +1,6 @@
+import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, Response
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -12,7 +13,9 @@ from app.schemas.prompt import PromptAnalysisRequest, PromptAnalysisResponse
 from app.schemas.document import DocumentAnalysisResponse
 from app.services.prompt_evaluator import evaluate_prompt
 from app.services.document_parser import validate_uploaded_file, extract_text_from_file_bytes
-from ml.inference import AIModelInferenceService
+from ml.inference import AIModelInferenceService, ModelNotReadyError, ModelInitializingError
+
+logger = logging.getLogger("codewithanil.api.analyze")
 
 router = APIRouter(prefix="/analyze", tags=["Analysis"])
 
@@ -30,7 +33,22 @@ def analyze_text(
         )
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except ModelInitializingError as mie:
+        logger.warning(f"[Inference 503] Model initializing: {mie}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Inference service is currently initializing. Please try again in a few seconds.",
+            headers={"Retry-After": "5"}
+        )
+    except ModelNotReadyError as mnre:
+        logger.error(f"[Inference 503] Model not ready: {mnre}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Inference service unavailable: {str(mnre)}",
+            headers={"Retry-After": "10"}
+        )
     except Exception as e:
+        logger.error(f"[Inference 500] Unexpected inference failure: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Inference error: {str(e)}",
@@ -103,7 +121,22 @@ async def analyze_document(
         )
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except ModelInitializingError as mie:
+        logger.warning(f"[Document Inference 503] Model initializing: {mie}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Inference service is currently initializing. Please try again in a few seconds.",
+            headers={"Retry-After": "5"}
+        )
+    except ModelNotReadyError as mnre:
+        logger.error(f"[Document Inference 503] Model not ready: {mnre}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Inference service unavailable: {str(mnre)}",
+            headers={"Retry-After": "10"}
+        )
     except Exception as e:
+        logger.error(f"[Document Inference Error] {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document inference failure: {str(e)}",

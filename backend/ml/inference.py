@@ -8,10 +8,12 @@ and PyTorch FP32 (baseline reference).
 import os
 import time
 import logging
+import threading
 from typing import Optional, List, Dict, Any, Tuple
 
 from app.core.config import settings
 from ml.preprocessing import clean_text, split_into_sentences, compute_text_metrics
+from ml.onnx_inference import ModelNotReadyError, ModelInitializingError
 
 logger = logging.getLogger("codewithanil.ml.inference")
 
@@ -21,6 +23,7 @@ class PyTorchModelInferenceService:
     with PyTorch inference mode, softmax calibration, and segment parsing.
     """
     _instance: Optional["PyTorchModelInferenceService"] = None
+    _singleton_lock = threading.Lock()
 
     def __init__(self, model_name: Optional[str] = None):
         import torch
@@ -29,7 +32,10 @@ class PyTorchModelInferenceService:
         self.model = None
         self.device = torch.device("cpu")
         self.is_loaded = False
+        self.is_loading = False
         self.load_error: Optional[str] = None
+        self.load_time_sec: Optional[float] = None
+        self._load_lock = threading.Lock()
         self.id2label: Dict[str, str] = {}
         self.model_version = "roberta-base-hc3-v1"
         self.framework = "PyTorch CPU & Hugging Face Transformers"
@@ -37,40 +43,64 @@ class PyTorchModelInferenceService:
     @classmethod
     def get_instance(cls) -> "PyTorchModelInferenceService":
         if cls._instance is None:
-            cls._instance = PyTorchModelInferenceService()
+            with cls._singleton_lock:
+                if cls._instance is None:
+                    cls._instance = PyTorchModelInferenceService()
         return cls._instance
+
+    def is_ready(self) -> bool:
+        return self.is_loaded and self.model is not None
+
+    def get_readiness_info(self) -> Dict[str, Any]:
+        return {
+            "status": "ready" if self.is_ready() else ("initializing" if self.is_loading else "unloaded"),
+            "ready": self.is_ready(),
+            "model_name": self.model_name,
+            "model_version": self.model_version,
+            "framework": self.framework,
+            "load_time_sec": self.load_time_sec,
+            "error": self.load_error,
+        }
 
     def load_model(self) -> bool:
         """
-        Loads the pretrained model and tokenizer into memory.
-        Executed once during server startup.
+        Loads the pretrained model and tokenizer into memory with thread safety.
         """
         if self.is_loaded:
             return True
 
-        logger.info(f"Loading transformer model '{self.model_name}' on CPU...")
-        try:
-            from transformers import AutoTokenizer, AutoModelForSequenceClassification
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
-            self.model.eval()
-            self.model.to(self.device)
+        with self._load_lock:
+            if self.is_loaded:
+                return True
 
-            # Read configuration label mapping
-            if hasattr(self.model.config, "id2label") and self.model.config.id2label:
-                self.id2label = {str(k): str(v) for k, v in self.model.config.id2label.items()}
-            else:
-                self.id2label = {"0": "Human", "1": "ChatGPT"}
-
-            self.is_loaded = True
+            self.is_loading = True
             self.load_error = None
-            logger.info(f"Successfully loaded '{self.model_name}' with labels {self.id2label}")
-            return True
-        except Exception as e:
-            self.is_loaded = False
-            self.load_error = f"Failed to load Hugging Face model '{self.model_name}': {str(e)}"
-            logger.error(self.load_error, exc_info=True)
-            return False
+            t0 = time.perf_counter()
+            logger.info(f"Loading transformer model '{self.model_name}' on CPU...")
+            try:
+                from transformers import AutoTokenizer, AutoModelForSequenceClassification
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
+                self.model.eval()
+                self.model.to(self.device)
+
+                # Read configuration label mapping
+                if hasattr(self.model.config, "id2label") and self.model.config.id2label:
+                    self.id2label = {str(k): str(v) for k, v in self.model.config.id2label.items()}
+                else:
+                    self.id2label = {"0": "Human", "1": "ChatGPT"}
+
+                self.is_loaded = True
+                self.is_loading = False
+                self.load_time_sec = round(time.perf_counter() - t0, 3)
+                logger.info(f"Successfully loaded '{self.model_name}' with labels {self.id2label}")
+                return True
+            except Exception as e:
+                self.is_loaded = False
+                self.is_loading = False
+                self.load_error = f"Failed to load Hugging Face model '{self.model_name}': {str(e)}"
+                logger.error(self.load_error, exc_info=True)
+                return False
 
     def predict_text(
         self,
@@ -84,9 +114,13 @@ class PyTorchModelInferenceService:
         import torch.nn.functional as F
 
         if not self.is_loaded:
+            if self.is_loading:
+                raise ModelInitializingError(
+                    "Inference service is currently initializing. Please try again in a few seconds."
+                )
             loaded = self.load_model()
             if not loaded:
-                raise RuntimeError(self.load_error or "Model is not loaded.")
+                raise ModelNotReadyError(self.load_error or "Model is not loaded.")
 
         start_time = time.perf_counter()
         cleaned = clean_text(raw_text)
@@ -185,6 +219,11 @@ class PyTorchModelInferenceService:
             "ESL / Non-native English writing often features uniform syntactic patterns that can increase false-positive likelihood.",
             "Adversarial rewrites or paraphrasing tools intentionally distort token perplexity markers."
         ]
+
+        logger.info(
+            f"[PyTorch Inference Complete] {word_count} words | Result: {prediction} "
+            f"(AI: {raw_ai_prob:.4f}, Human: {raw_human_prob:.4f}) | Latency: {processing_time_ms}ms"
+        )
 
         return {
             "input_text": cleaned,

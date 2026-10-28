@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { SentenceHighlighter } from '../components/SentenceHighlighter';
-import { api } from '../services/api';
+import { api, extractErrorMessage } from '../services/api';
 import { TextAnalysisResponse } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -74,10 +74,7 @@ export const DetectorPage: React.FC = () => {
       );
       setResult(data);
     } catch (err: any) {
-      setError(
-        err?.response?.data?.detail ||
-          'Failed to perform inference. Ensure the backend server and model service are running.'
-      );
+      setError(extractErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

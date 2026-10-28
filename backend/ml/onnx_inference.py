@@ -1,13 +1,16 @@
 """
 High-Performance, Zero-PyTorch ONNX Runtime Dynamic INT8 Inference Service.
 Specifically optimized for strict memory budgets (< 400 MB RAM) on Render Free.
+Includes thread-safe initialization, readiness lifecycle tracking, and structured diagnostics.
 """
 
 import os
 import time
 import logging
+import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from enum import Enum
 import numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
@@ -17,6 +20,20 @@ from ml.preprocessing import clean_text, split_into_sentences, compute_text_metr
 
 logger = logging.getLogger("codewithanil.ml.onnx_inference")
 
+class ModelLifecycleStatus(str, Enum):
+    UNLOADED = "unloaded"
+    INITIALIZING = "initializing"
+    READY = "ready"
+    ERROR = "error"
+
+class ModelNotReadyError(RuntimeError):
+    """Raised when an inference request arrives but the model is not ready."""
+    pass
+
+class ModelInitializingError(ModelNotReadyError):
+    """Raised when an inference request arrives while the model is currently loading."""
+    pass
+
 class ONNXModelInferenceService:
     """
     Lightweight, production-grade inference engine using ONNX Runtime Dynamic INT8
@@ -24,6 +41,7 @@ class ONNXModelInferenceService:
     from memory to operate within 512 MB RAM environments.
     """
     _instance: Optional["ONNXModelInferenceService"] = None
+    _singleton_lock = threading.Lock()
 
     def __init__(
         self,
@@ -36,7 +54,6 @@ class ONNXModelInferenceService:
         configured_model_path = model_path or getattr(settings, "ONNX_MODEL_PATH", "ml/models/roberta_chatgpt_detector_int8.onnx")
         resolved_model_path = Path(configured_model_path)
         if not resolved_model_path.is_absolute():
-            # Try relative to backend root, or relative to ml dir
             candidate1 = base_dir.parent / resolved_model_path
             candidate2 = base_dir / resolved_model_path.name
             if candidate1.exists():
@@ -64,8 +81,14 @@ class ONNXModelInferenceService:
 
         self.tokenizer: Optional[Tokenizer] = None
         self.session: Optional[ort.InferenceSession] = None
-        self.is_loaded = False
+        
+        # Lifecycle state & synchronization
+        self._load_lock = threading.Lock()
+        self.status: ModelLifecycleStatus = ModelLifecycleStatus.UNLOADED
         self.load_error: Optional[str] = None
+        self.load_time_sec: Optional[float] = None
+        self.initialization_attempts: int = 0
+        
         self.id2label: Dict[str, str] = {"0": "Human", "1": "ChatGPT"}
         self.model_name = settings.HF_MODEL_NAME
         self.model_version = "roberta-base-hc3-int8-v1"
@@ -74,54 +97,96 @@ class ONNXModelInferenceService:
     @classmethod
     def get_instance(cls) -> "ONNXModelInferenceService":
         if cls._instance is None:
-            cls._instance = ONNXModelInferenceService()
+            with cls._singleton_lock:
+                if cls._instance is None:
+                    cls._instance = ONNXModelInferenceService()
         return cls._instance
+
+    @property
+    def is_loaded(self) -> bool:
+        return self.status == ModelLifecycleStatus.READY and self.session is not None
+
+    @property
+    def is_loading(self) -> bool:
+        return self.status == ModelLifecycleStatus.INITIALIZING
+
+    def is_ready(self) -> bool:
+        return self.is_loaded
+
+    def get_readiness_info(self) -> Dict[str, Any]:
+        """Provides accurate readiness state for Kubernetes / Render readiness probes."""
+        return {
+            "status": self.status.value,
+            "ready": self.is_loaded,
+            "model_name": self.model_name,
+            "model_version": self.model_version,
+            "framework": self.framework,
+            "load_time_sec": self.load_time_sec,
+            "error": self.load_error,
+        }
 
     def load_model(self) -> bool:
         """
-        Loads the INT8 ONNX graph and Tokenizer into memory with optimized thread allocation.
+        Thread-safe loader for the INT8 ONNX graph and Tokenizer into memory.
+        Uses double-checked locking to prevent concurrent reload spikes on 512 MB memory limit.
         """
         if self.is_loaded:
             return True
 
-        logger.info(f"Loading ONNX INT8 model from '{self.model_path}' on CPU...")
-        try:
-            if not os.path.exists(self.model_path) or not os.path.exists(self.tokenizer_path):
-                logger.info("ONNX model or tokenizer asset not found locally; provisioning from Hub...")
-                from ml.download_model import ensure_model_assets
-                ensure_model_assets()
+        with self._load_lock:
+            # Double-check inside lock
+            if self.is_loaded:
+                return True
 
-            if not os.path.exists(self.model_path):
-                raise FileNotFoundError(f"ONNX model file not found at: {self.model_path}")
-            if not os.path.exists(self.tokenizer_path):
-                raise FileNotFoundError(f"Tokenizer asset not found at: {self.tokenizer_path}")
+            self.status = ModelLifecycleStatus.INITIALIZING
+            self.load_error = None
+            self.initialization_attempts += 1
+            t0 = time.perf_counter()
 
-            # 1. Load Rust-backed tokenizer
-            self.tokenizer = Tokenizer.from_file(self.tokenizer_path)
-
-            # 2. Configure ONNX Runtime CPU session for single-core / low-memory containers
-            sess_options = ort.SessionOptions()
-            sess_options.intra_op_num_threads = 1
-            sess_options.inter_op_num_threads = 1
-            sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-            self.session = ort.InferenceSession(
-                self.model_path,
-                sess_options=sess_options,
-                providers=["CPUExecutionProvider"]
+            logger.info(
+                f"[ML Lifecycle] Initializing ONNX INT8 model (attempt {self.initialization_attempts}) "
+                f"from '{self.model_path}' on CPU..."
             )
 
-            self.is_loaded = True
-            self.load_error = None
-            logger.info("Successfully loaded ONNX INT8 model into memory.")
-            return True
+            try:
+                # 1. Ensure assets exist locally or download with SHA-256 verification
+                if not os.path.exists(self.model_path) or not os.path.exists(self.tokenizer_path):
+                    logger.info("[ML Lifecycle] Assets not found locally. Provisioning verified model files...")
+                    from ml.download_model import ensure_model_assets
+                    ensure_model_assets()
 
-        except Exception as e:
-            self.is_loaded = False
-            self.load_error = f"Failed to load ONNX model: {str(e)}"
-            logger.error(self.load_error, exc_info=True)
-            return False
+                if not os.path.exists(self.model_path):
+                    raise FileNotFoundError(f"ONNX model file not found at: {self.model_path}")
+                if not os.path.exists(self.tokenizer_path):
+                    raise FileNotFoundError(f"Tokenizer asset not found at: {self.tokenizer_path}")
+
+                # 2. Load Rust-backed tokenizer
+                self.tokenizer = Tokenizer.from_file(self.tokenizer_path)
+
+                # 3. Configure ONNX Runtime CPU session with low-memory bounds
+                sess_options = ort.SessionOptions()
+                sess_options.intra_op_num_threads = 1
+                sess_options.inter_op_num_threads = 1
+                sess_options.enable_cpu_mem_arena = False # Enforce strictly bounded memory
+                sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+                sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+                self.session = ort.InferenceSession(
+                    self.model_path,
+                    sess_options=sess_options,
+                    providers=["CPUExecutionProvider"]
+                )
+
+                self.status = ModelLifecycleStatus.READY
+                self.load_time_sec = round(time.perf_counter() - t0, 3)
+                logger.info(f"[ML Lifecycle] ONNX INT8 model successfully loaded and ready in {self.load_time_sec}s.")
+                return True
+
+            except Exception as e:
+                self.status = ModelLifecycleStatus.ERROR
+                self.load_error = f"Failed to load ONNX model: {str(e)}"
+                logger.error(f"[ML Lifecycle Error] {self.load_error}", exc_info=True)
+                return False
 
     def predict_text(
         self,
@@ -132,10 +197,17 @@ class ONNXModelInferenceService:
         Executes calibrated AI vs Human text classification using pure ONNX Runtime & NumPy.
         Guarantees exact schema and behavioral parity with baseline PyTorch model.
         """
+        # Readiness checks
         if not self.is_loaded:
+            if self.is_loading:
+                raise ModelInitializingError(
+                    "Inference service is currently initializing. Please try again in a few seconds."
+                )
+
+            # Attempt load under lock
             loaded = self.load_model()
             if not loaded:
-                raise RuntimeError(self.load_error or "ONNX Model is not loaded.")
+                raise ModelNotReadyError(self.load_error or "ONNX Model is not loaded.")
 
         start_time = time.perf_counter()
         cleaned = clean_text(raw_text)
@@ -151,7 +223,7 @@ class ONNXModelInferenceService:
 
         # 1. Full document forward pass
         self.tokenizer.enable_truncation(max_length=settings.MAX_SEQUENCE_LENGTH)
-        self.tokenizer.no_padding() # Dynamic sequence length avoids unnecessary padding computation
+        self.tokenizer.no_padding()
         encoded = self.tokenizer.encode(cleaned)
 
         input_ids = np.array([encoded.ids], dtype=np.int64)
@@ -161,7 +233,7 @@ class ONNXModelInferenceService:
             None,
             {"input_ids": input_ids, "attention_mask": attention_mask}
         )
-        logits = ort_outputs[0][0] # Shape: [num_classes]
+        logits = ort_outputs[0][0]
 
         # Numerically stable softmax
         exp_logits = np.exp(logits - np.max(logits))
@@ -238,6 +310,11 @@ class ONNXModelInferenceService:
             "ESL / Non-native English writing often features uniform syntactic patterns that can increase false-positive likelihood.",
             "Adversarial rewrites or paraphrasing tools intentionally distort token perplexity markers."
         ]
+
+        logger.info(
+            f"[Inference Complete] {word_count} words | Result: {prediction} "
+            f"(AI: {raw_ai_prob:.4f}, Human: {raw_human_prob:.4f}) | Latency: {processing_time_ms}ms"
+        )
 
         return {
             "input_text": cleaned,

@@ -90,17 +90,22 @@ def ensure_model_assets():
             raise ValueError(f"Tokenizer integrity check failed: {downloaded_tok_hash} != {EXPECTED_TOKENIZER_SHA256}")
         print(f"[OK] Tokenizer successfully passed SHA-256 verification.")
 
-    # 3. Quick sanity test loading session
+    return True
+
+if __name__ == "__main__":
+    ensure_model_assets()
+    # Smoke test session initialization when run directly
     print("Testing session initialization...")
     import onnxruntime as ort
     from tokenizers import Tokenizer
     
+    models_dir = Path(__file__).resolve().parent / "models"
+    int8_model_path = models_dir / "roberta_chatgpt_detector_int8.onnx"
+    tokenizer_json = models_dir / "tokenizer" / "tokenizer.json"
+
     _ = Tokenizer.from_file(str(tokenizer_json))
     opt = ort.SessionOptions()
     opt.intra_op_num_threads = 1
     opt.enable_cpu_mem_arena = False
     _ = ort.InferenceSession(str(int8_model_path), opt, providers=["CPUExecutionProvider"])
     print("[SUCCESS] All model assets verified and operational for Render deployment.")
-
-if __name__ == "__main__":
-    ensure_model_assets()

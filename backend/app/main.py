@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -26,21 +26,25 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[f"{settings.RATE_
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Startup: Create tables
-    logger.info("Initializing database schemas...")
+    logger.info("[Startup] Initializing database schemas...")
     Base.metadata.create_all(bind=engine)
 
-    # 2. Preload Transformer Model on startup
-    logger.info("Preloading machine learning sequence classification model...")
+    # 2. Preload ML Model on startup
+    logger.info("[Startup] Preloading machine learning inference engine...")
     service = AIModelInferenceService.get_instance()
     try:
-        service.load_model()
+        success = service.load_model()
+        if success:
+            logger.info("[Startup] ML model successfully preloaded into memory.")
+        else:
+            logger.warning(f"[Startup Warning] Model preload did not complete: {getattr(service, 'load_error', 'unknown error')}. Will retry on demand.")
     except Exception as e:
-        logger.warning(f"Initial model preload encountered: {e}. Model will attempt on-demand load during inference.")
+        logger.error(f"[Startup Error] Exception while preloading model: {e}", exc_info=True)
 
     yield
 
     # 3. Shutdown cleanup
-    logger.info("Application shutting down...")
+    logger.info("[Shutdown] Application shutting down...")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -53,21 +57,26 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Configure CORS
+# Configure CORS with Vercel regex support for dynamic preview branches
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"^https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount API Routers
+# Mount API Routers under /api
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(analyze.router, prefix=settings.API_V1_STR)
 app.include_router(model.router, prefix=settings.API_V1_STR)
 app.include_router(history.router, prefix=settings.API_V1_STR)
 app.include_router(reports.router, prefix=settings.API_V1_STR)
+
+# Direct fallbacks without /api prefix (prevents 404 if reverse proxy or frontend client strips /api)
+app.include_router(analyze.router)
+app.include_router(model.router)
 
 @app.get("/")
 def root():
@@ -77,4 +86,5 @@ def root():
         "status": "operational",
         "docs": "/docs",
         "health": f"{settings.API_V1_STR}/health",
+        "ready": f"{settings.API_V1_STR}/ready",
     }

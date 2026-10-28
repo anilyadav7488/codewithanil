@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { ModelTransparencyCard } from '../components/ModelTransparencyCard';
 import { ResponsibleUseDisclaimer } from '../components/ResponsibleUseDisclaimer';
-import { api } from '../services/api';
+import { api, extractErrorMessage } from '../services/api';
 import { TextAnalysisResponse } from '../types';
 
 export const HomePage: React.FC = () => {
@@ -35,7 +35,7 @@ export const HomePage: React.FC = () => {
       const data = await api.analyzeText(previewText, false, false);
       setPreviewResult(data);
     } catch (err: any) {
-      setPreviewError(err?.response?.data?.detail || 'Inference service is currently initializing. Please try again in a few seconds.');
+      setPreviewError(extractErrorMessage(err));
     } finally {
       setIsLoadingPreview(false);
     }
