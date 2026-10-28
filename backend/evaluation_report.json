@@ -8,85 +8,85 @@
   "f1_score": 0.2,
   "false_positive_rate": 0.8,
   "false_negative_rate": 0.8,
-  "brier_calibration_score": 0.7733,
+  "brier_calibration_score": 0.7726,
   "confusion_matrix": {
     "true_positive": 1,
     "true_negative": 1,
     "false_positive": 4,
     "false_negative": 4
   },
-  "average_latency_ms": 194.4,
+  "average_latency_ms": 117.7,
   "samples": {
     "hc3_chatgpt_photosynthesis": {
       "category": "ai_biology",
       "true_label": "AI",
       "predicted": "AI-Generated",
-      "ai_score": 0.9977,
-      "latency_ms": 250,
+      "ai_score": 0.9979,
+      "latency_ms": 128,
       "correct": true
     },
     "hc3_human_photosynthesis": {
       "category": "human_biology",
       "true_label": "Human",
       "predicted": "AI-Generated",
-      "ai_score": 0.9979,
-      "latency_ms": 172,
+      "ai_score": 0.9986,
+      "latency_ms": 153,
       "correct": false
     },
     "hc3_chatgpt_cpu": {
       "category": "ai_tech",
       "true_label": "AI",
       "predicted": "Human",
-      "ai_score": 0.0353,
-      "latency_ms": 226,
+      "ai_score": 0.0328,
+      "latency_ms": 124,
       "correct": false
     },
     "hc3_human_cpu": {
       "category": "human_tech",
       "true_label": "Human",
       "predicted": "Human",
-      "ai_score": 0.0292,
-      "latency_ms": 221,
+      "ai_score": 0.0394,
+      "latency_ms": 121,
       "correct": true
     },
     "hc3_chatgpt_autumn": {
       "category": "ai_nature",
       "true_label": "AI",
       "predicted": "Human",
-      "ai_score": 0.0286,
-      "latency_ms": 204,
+      "ai_score": 0.0495,
+      "latency_ms": 126,
       "correct": false
     },
     "hc3_human_autumn": {
       "category": "human_nature",
       "true_label": "Human",
       "predicted": "AI-Generated",
-      "ai_score": 0.9982,
-      "latency_ms": 181,
+      "ai_score": 0.9984,
+      "latency_ms": 103,
       "correct": false
     },
     "hc3_chatgpt_networking": {
       "category": "ai_networking",
       "true_label": "AI",
       "predicted": "Human",
-      "ai_score": 0.001,
-      "latency_ms": 189,
+      "ai_score": 0.0013,
+      "latency_ms": 120,
       "correct": false
     },
     "hc3_human_networking": {
       "category": "human_networking",
       "true_label": "Human",
       "predicted": "AI-Generated",
-      "ai_score": 0.9853,
-      "latency_ms": 173,
+      "ai_score": 0.9863,
+      "latency_ms": 117,
       "correct": false
     },
     "stress_human_formal_esl": {
       "category": "human_esl_stress",
       "true_label": "Human",
       "predicted": "AI-Generated",
-      "ai_score": 0.9472,
-      "latency_ms": 158,
+      "ai_score": 0.96,
+      "latency_ms": 97,
       "correct": false
     },
     "stress_ai_adversarial_paraphrase": {
@@ -94,7 +94,7 @@
       "true_label": "AI",
       "predicted": "Human",
       "ai_score": 0.0003,
-      "latency_ms": 170,
+      "latency_ms": 88,
       "correct": false
     }
   }

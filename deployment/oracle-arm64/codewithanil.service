@@ -1,0 +1,22 @@
+[Unit]
+Description=CodeWithAnil AI Text Detector FastAPI Backend Service
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/codewithanil/backend
+EnvironmentFile=/opt/codewithanil/backend/.env
+ExecStart=/opt/codewithanil/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --timeout-keep-alive 65
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+
+# Process security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

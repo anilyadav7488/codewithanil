@@ -76,6 +76,8 @@ checkpoints/
 *.pt
 *.pth
 *.safetensors
+*.onnx
+backend/ml/models/
 
 # IDE and system
 .vscode/

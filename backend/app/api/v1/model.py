@@ -12,7 +12,7 @@ def get_model_info():
     return ModelInfoResponse(
         model_name=service.model_name,
         architecture="RoBERTa Sequence Classification (125 Million Parameters)",
-        framework="PyTorch CPU & Hugging Face Transformers",
+        framework=getattr(service, "framework", "ONNX Runtime Dynamic INT8 CPU (Zero-PyTorch)"),
         intended_use="Estimation of linguistic and token distribution markers characteristic of LLMs vs human writing.",
         training_dataset="HC3 (Human ChatGPT Comparison Corpus, open benchmark dataset)",
         license="Apache 2.0 / MIT Open Access",

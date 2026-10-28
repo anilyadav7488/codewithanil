@@ -60,10 +60,17 @@ codewithanil/
     Dockerfile             # Production Docker container
     render.yaml            # Render Blueprint deployment definition
     requirements.txt       # Python dependencies
+  deployment/
+    oracle-arm64/          # Zero-cost Oracle Cloud Ampere A1 automation
+      setup.sh             # Turnkey provisioning script (PostgreSQL, Nginx, Uvicorn)
+      codewithanil.service # Systemd unit configuration
+      nginx.conf           # Reverse proxy configuration
+      monitor.sh           # Service & RAM/CPU resource health monitor
   docs/
     architecture.md        # Technical architecture & dataflow diagrams
     model-card.md          # Model provenance, operational bounds, and ethics
     deployment.md          # Local Windows execution & production deployment
+    oracle-cloud-arm64-deployment.md # Zero-cost Oracle Cloud ARM64 guide
   README.md                # Project documentation
   .gitignore               # Repository ignore rules
 ```

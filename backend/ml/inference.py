@@ -1,37 +1,43 @@
+"""
+Inference Module for CodeWithAnil.
+Provides unified access to the machine learning inference engine,
+supporting both decoupled ONNX Runtime Dynamic INT8 (low memory)
+and PyTorch FP32 (baseline reference).
+"""
+
 import os
 import time
 import logging
 from typing import Optional, List, Dict, Any, Tuple
-import torch
-import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 from app.core.config import settings
 from ml.preprocessing import clean_text, split_into_sentences, compute_text_metrics
 
 logger = logging.getLogger("codewithanil.ml.inference")
 
-class AIModelInferenceService:
+class PyTorchModelInferenceService:
     """
-    Production-grade inference service wrapping Hugging Face Transformers
+    Production-grade baseline inference service wrapping Hugging Face Transformers
     with PyTorch inference mode, softmax calibration, and segment parsing.
     """
-    _instance: Optional["AIModelInferenceService"] = None
+    _instance: Optional["PyTorchModelInferenceService"] = None
 
     def __init__(self, model_name: Optional[str] = None):
+        import torch
         self.model_name = model_name or settings.HF_MODEL_NAME
         self.tokenizer = None
         self.model = None
-        self.device = torch.device("cpu") # Optimized CPU inference
+        self.device = torch.device("cpu")
         self.is_loaded = False
         self.load_error: Optional[str] = None
         self.id2label: Dict[str, str] = {}
         self.model_version = "roberta-base-hc3-v1"
+        self.framework = "PyTorch CPU & Hugging Face Transformers"
 
     @classmethod
-    def get_instance(cls) -> "AIModelInferenceService":
+    def get_instance(cls) -> "PyTorchModelInferenceService":
         if cls._instance is None:
-            cls._instance = AIModelInferenceService()
+            cls._instance = PyTorchModelInferenceService()
         return cls._instance
 
     def load_model(self) -> bool:
@@ -44,6 +50,7 @@ class AIModelInferenceService:
 
         logger.info(f"Loading transformer model '{self.model_name}' on CPU...")
         try:
+            from transformers import AutoTokenizer, AutoModelForSequenceClassification
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
             self.model.eval()
@@ -71,11 +78,12 @@ class AIModelInferenceService:
         include_sentences: bool = True
     ) -> Dict[str, Any]:
         """
-        Performs real neural inference on user text.
-        Returns calibrated AI vs Human scores, uncertainty flags, and sentence segments.
+        Performs real neural inference on user text using PyTorch.
         """
+        import torch
+        import torch.nn.functional as F
+
         if not self.is_loaded:
-            # Attempt lazy load if startup failed or not called
             loaded = self.load_model()
             if not loaded:
                 raise RuntimeError(self.load_error or "Model is not loaded.")
@@ -92,8 +100,6 @@ class AIModelInferenceService:
                 f"Input text has {word_count} words. Minimum 15 words required for statistical inference."
             )
 
-        # 1. Full document / passage forward pass
-        # Tokenize with max_length 512, truncation=True
         inputs = self.tokenizer(
             cleaned,
             return_tensors="pt",
@@ -104,14 +110,9 @@ class AIModelInferenceService:
 
         with torch.inference_mode():
             outputs = self.model(**inputs)
-            logits = outputs.logits[0] # [num_classes]
+            logits = outputs.logits[0]
             probabilities = F.softmax(logits, dim=-1).tolist()
 
-        # Identify AI vs Human label indices
-        # For Hello-SimpleAI/chatgpt-detector-roberta:
-        # index 0: 'Human', index 1: 'ChatGPT' (AI)
-        # For roberta-base-openai-detector:
-        # index 0: 'Fake' (AI), index 1: 'Real' (Human)
         ai_idx = 1
         human_idx = 0
         if "0" in self.id2label:
@@ -123,8 +124,6 @@ class AIModelInferenceService:
         raw_human_prob = float(probabilities[human_idx])
         raw_ai_prob = float(probabilities[ai_idx])
 
-        # Calibrate & determine inconclusive boundary
-        # If score lies between 0.40 and 0.60, mark as inconclusive
         lower_bound = settings.INCONCLUSIVE_LOWER_THRESHOLD
         upper_bound = settings.INCONCLUSIVE_UPPER_THRESHOLD
 
@@ -140,14 +139,12 @@ class AIModelInferenceService:
             prediction = "Human"
             confidence = "High" if raw_human_prob >= 0.80 else "Medium"
 
-        # 2. Sentence-level analysis
         sentence_analyses: List[Dict[str, Any]] = []
         if include_sentences:
             sentences = split_into_sentences(cleaned)
             for idx, sentence in enumerate(sentences):
                 s_words = len(sentence.split())
                 if s_words < 6:
-                    # Very short segments cannot be reliably classified
                     continue
 
                 s_inputs = self.tokenizer(
@@ -182,7 +179,6 @@ class AIModelInferenceService:
 
         processing_time_ms = int((time.perf_counter() - start_time) * 1000)
 
-        # Document operational limitations for transparency
         limitations = [
             "Classification is probabilistic: high scores indicate stylistic overlap with synthetic corpora, not absolute proof.",
             "Short texts (< 50 words) provide reduced signal density and carry higher variance.",
@@ -209,3 +205,24 @@ class AIModelInferenceService:
             "limitations": limitations,
             "sentence_analyses": sentence_analyses if include_sentences else None,
         }
+
+def get_inference_service():
+    """
+    Factory function returning the active inference service according to settings.
+    Defaults to ONNX INT8 for Render Free memory safety (< 400 MB RAM).
+    """
+    backend = getattr(settings, "INFERENCE_BACKEND", "onnx_int8").lower()
+    if backend == "pytorch_fp32":
+        return PyTorchModelInferenceService.get_instance()
+    else:
+        from ml.onnx_inference import ONNXModelInferenceService
+        return ONNXModelInferenceService.get_instance()
+
+class AIModelInferenceService:
+    """
+    Unified factory / router class preserving 100% backward compatibility
+    with existing callers while seamlessly switching inference engines.
+    """
+    @classmethod
+    def get_instance(cls):
+        return get_inference_service()

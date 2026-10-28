@@ -1,0 +1,40 @@
+# Render Free Blueprint Configuration (512 MB RAM Ceiling)
+# Project: CodeWithAnil AI Detector
+# Memory Architecture: Zero-PyTorch ONNX Runtime Dynamic INT8 (Peak RSS ~275 MB)
+
+services:
+  - type: web
+    name: codewithanil-backend
+    runtime: python
+    region: oregon
+    plan: free
+    branch: experiment/onnx-int8
+    rootDir: backend
+    buildCommand: "pip install --upgrade pip && pip install -r requirements-render-free.txt && python ml/download_model.py"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1"
+    healthCheckPath: /api/health
+    envVars:
+      - key: INFERENCE_BACKEND
+        value: onnx_int8
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: ONNX_MODEL_PATH
+        value: ml/models/roberta_chatgpt_detector_int8.onnx
+      - key: TOKENIZER_DIR
+        value: ml/models/tokenizer
+      - key: MAX_SEQUENCE_LENGTH
+        value: "512"
+      - key: INCONCLUSIVE_LOWER_THRESHOLD
+        value: "0.40"
+      - key: INCONCLUSIVE_UPPER_THRESHOLD
+        value: "0.60"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "60"
+      - key: CORS_ORIGINS
+        value: '["https://codewithanil.vercel.app","http://localhost:3000","http://127.0.0.1:3000"]'
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:///./codewithanil.db

@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     
     # Machine Learning Settings
     HF_MODEL_NAME: str = "Hello-SimpleAI/chatgpt-detector-roberta"
+    INFERENCE_BACKEND: str = "onnx_int8" # "onnx_int8" | "pytorch_fp32"
+    ONNX_MODEL_PATH: str = "ml/models/roberta_chatgpt_detector_int8.onnx"
+    TOKENIZER_DIR: str = "ml/models/tokenizer"
     INFERENCE_DEVICE: str = "cpu"
     MAX_SEQUENCE_LENGTH: int = 512
     INCONCLUSIVE_LOWER_THRESHOLD: float = 0.40
