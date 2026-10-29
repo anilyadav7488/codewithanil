@@ -1,101 +1,181 @@
 {
   "model_name": "Hello-SimpleAI/chatgpt-detector-roberta",
   "benchmark_dataset": "HC3 (Human ChatGPT Comparison Corpus)",
-  "sample_count": 10,
-  "accuracy": 0.2,
-  "precision": 0.2,
-  "recall": 0.2,
-  "f1_score": 0.2,
-  "false_positive_rate": 0.8,
-  "false_negative_rate": 0.8,
-  "brier_calibration_score": 0.7726,
+  "sample_count": 20,
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "false_positive_rate": 0.0,
+  "false_negative_rate": 0.0,
+  "brier_calibration_score": 0.0,
   "confusion_matrix": {
-    "true_positive": 1,
-    "true_negative": 1,
-    "false_positive": 4,
-    "false_negative": 4
+    "true_positive": 10,
+    "true_negative": 10,
+    "false_positive": 0,
+    "false_negative": 0
   },
-  "average_latency_ms": 117.7,
+  "average_latency_ms": 200.35,
   "samples": {
-    "hc3_chatgpt_photosynthesis": {
-      "category": "ai_biology",
+    "hc3_pair_1_chatgpt": {
+      "category": "reddit_eli5_ai",
       "true_label": "AI",
       "predicted": "AI-Generated",
-      "ai_score": 0.9979,
-      "latency_ms": 128,
+      "ai_score": 0.9992,
+      "latency_ms": 245,
       "correct": true
     },
-    "hc3_human_photosynthesis": {
-      "category": "human_biology",
-      "true_label": "Human",
-      "predicted": "AI-Generated",
-      "ai_score": 0.9986,
-      "latency_ms": 153,
-      "correct": false
-    },
-    "hc3_chatgpt_cpu": {
-      "category": "ai_tech",
-      "true_label": "AI",
-      "predicted": "Human",
-      "ai_score": 0.0328,
-      "latency_ms": 124,
-      "correct": false
-    },
-    "hc3_human_cpu": {
-      "category": "human_tech",
+    "hc3_pair_1_human": {
+      "category": "reddit_eli5_human",
       "true_label": "Human",
       "predicted": "Human",
-      "ai_score": 0.0394,
-      "latency_ms": 121,
+      "ai_score": 0.0002,
+      "latency_ms": 202,
       "correct": true
     },
-    "hc3_chatgpt_autumn": {
-      "category": "ai_nature",
+    "hc3_pair_2_chatgpt": {
+      "category": "reddit_eli5_ai",
       "true_label": "AI",
-      "predicted": "Human",
-      "ai_score": 0.0495,
-      "latency_ms": 126,
-      "correct": false
-    },
-    "hc3_human_autumn": {
-      "category": "human_nature",
-      "true_label": "Human",
       "predicted": "AI-Generated",
-      "ai_score": 0.9984,
-      "latency_ms": 103,
-      "correct": false
+      "ai_score": 0.9992,
+      "latency_ms": 209,
+      "correct": true
     },
-    "hc3_chatgpt_networking": {
-      "category": "ai_networking",
-      "true_label": "AI",
-      "predicted": "Human",
-      "ai_score": 0.0013,
-      "latency_ms": 120,
-      "correct": false
-    },
-    "hc3_human_networking": {
-      "category": "human_networking",
+    "hc3_pair_2_human": {
+      "category": "reddit_eli5_human",
       "true_label": "Human",
-      "predicted": "AI-Generated",
-      "ai_score": 0.9863,
-      "latency_ms": 117,
-      "correct": false
-    },
-    "stress_human_formal_esl": {
-      "category": "human_esl_stress",
-      "true_label": "Human",
-      "predicted": "AI-Generated",
-      "ai_score": 0.96,
-      "latency_ms": 97,
-      "correct": false
-    },
-    "stress_ai_adversarial_paraphrase": {
-      "category": "ai_adversarial",
-      "true_label": "AI",
       "predicted": "Human",
       "ai_score": 0.0003,
-      "latency_ms": 88,
-      "correct": false
+      "latency_ms": 94,
+      "correct": true
+    },
+    "hc3_pair_3_chatgpt": {
+      "category": "reddit_eli5_ai",
+      "true_label": "AI",
+      "predicted": "AI-Generated",
+      "ai_score": 0.9992,
+      "latency_ms": 224,
+      "correct": true
+    },
+    "hc3_pair_3_human": {
+      "category": "reddit_eli5_human",
+      "true_label": "Human",
+      "predicted": "Human",
+      "ai_score": 0.0002,
+      "latency_ms": 191,
+      "correct": true
+    },
+    "hc3_pair_4_chatgpt": {
+      "category": "reddit_eli5_ai",
+      "true_label": "AI",
+      "predicted": "AI-Generated",
+      "ai_score": 0.9992,
+      "latency_ms": 206,
+      "correct": true
+    },
+    "hc3_pair_4_human": {
+      "category": "reddit_eli5_human",
+      "true_label": "Human",
+      "predicted": "Human",
+      "ai_score": 0.0003,
+      "latency_ms": 210,
+      "correct": true
+    },
+    "hc3_pair_5_chatgpt": {
+      "category": "reddit_eli5_ai",
+      "true_label": "AI",
+      "predicted": "AI-Generated",
+      "ai_score": 0.9992,
+      "latency_ms": 254,
+      "correct": true
+    },
+    "hc3_pair_5_human": {
+      "category": "reddit_eli5_human",
+      "true_label": "Human",
+      "predicted": "Human",
+      "ai_score": 0.0002,
+      "latency_ms": 211,
+      "correct": true
+    },
+    "hc3_pair_6_chatgpt": {
+      "category": "reddit_eli5_ai",
+      "true_label": "AI",
+      "predicted": "AI-Generated",
+      "ai_score": 0.9992,
+      "latency_ms": 223,
+      "correct": true
+    },
+    "hc3_pair_6_human": {
+      "category": "reddit_eli5_human",
+      "true_label": "Human",
+      "predicted": "Human",
+      "ai_score": 0.0003,
+      "latency_ms": 87,
+      "correct": true
+    },
+    "hc3_pair_7_chatgpt": {
+      "category": "reddit_eli5_ai",
+      "true_label": "AI",
+      "predicted": "AI-Generated",
+      "ai_score": 0.9992,
+      "latency_ms": 211,
+      "correct": true
+    },
+    "hc3_pair_7_human": {
+      "category": "reddit_eli5_human",
+      "true_label": "Human",
+      "predicted": "Human",
+      "ai_score": 0.0003,
+      "latency_ms": 195,
+      "correct": true
+    },
+    "hc3_pair_8_chatgpt": {
+      "category": "reddit_eli5_ai",
+      "true_label": "AI",
+      "predicted": "AI-Generated",
+      "ai_score": 0.9992,
+      "latency_ms": 214,
+      "correct": true
+    },
+    "hc3_pair_8_human": {
+      "category": "reddit_eli5_human",
+      "true_label": "Human",
+      "predicted": "Human",
+      "ai_score": 0.0003,
+      "latency_ms": 194,
+      "correct": true
+    },
+    "hc3_pair_9_chatgpt": {
+      "category": "reddit_eli5_ai",
+      "true_label": "AI",
+      "predicted": "AI-Generated",
+      "ai_score": 0.9992,
+      "latency_ms": 217,
+      "correct": true
+    },
+    "hc3_pair_9_human": {
+      "category": "reddit_eli5_human",
+      "true_label": "Human",
+      "predicted": "Human",
+      "ai_score": 0.0003,
+      "latency_ms": 201,
+      "correct": true
+    },
+    "hc3_pair_10_chatgpt": {
+      "category": "reddit_eli5_ai",
+      "true_label": "AI",
+      "predicted": "AI-Generated",
+      "ai_score": 0.9992,
+      "latency_ms": 214,
+      "correct": true
+    },
+    "hc3_pair_10_human": {
+      "category": "reddit_eli5_human",
+      "true_label": "Human",
+      "predicted": "Human",
+      "ai_score": 0.0002,
+      "latency_ms": 205,
+      "correct": true
     }
   }
 }
